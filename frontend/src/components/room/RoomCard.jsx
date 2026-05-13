@@ -22,8 +22,8 @@ const RoomCard = ({ room, color }) => {
       p-4 md:p-5 relative overflow-hidden"
     >
       {/* COLOR STRIPS */}
-      <div className={`absolute left-0 top-0 h-full w-[4px] ${color}`} />
-      <div className={`absolute right-0 top-0 h-full w-[4px] ${color} opacity-80`} />
+      <div className={`absolute left-0 top-0 h-full w-[5px] ${color}`} />
+      <div className={`absolute right-0 top-0 h-full w-[5px] ${color} opacity-80`} />
 
       {/* ================= MOBILE ================= */}
       <div className="md:hidden flex flex-col gap-3">

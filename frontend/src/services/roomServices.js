@@ -81,3 +81,93 @@ export const getScheduledForMeAPI = async ({
     };
   }
 };
+
+export const getRoomByIdAPI = async (roomId) => {
+  try {
+    if (!roomId) {
+      throw { message: "Room ID is required" };
+    }
+
+    const res = await api.get(`/room/${roomId}`);
+
+    return res.data;
+
+  } catch (error) {
+    throw error.response?.data || {
+      message: "Failed to fetch room details"
+    };
+  }
+};
+
+
+export const getWaitingParticipantAPI = async (roomId) => {
+  try {
+     if (!roomId) {
+      throw { message: "Room ID is required" };
+    }
+
+    const res = await api.get(`/room/${roomId}/waiting-participants`);
+
+    return res.data;
+  } catch (error) {
+     throw error.response?.data || {
+      message: "Failed to fetch room details"
+    };
+  }
+}
+
+export const acceptParticipantAPI = async (roomId, participantId) => {
+  try {
+    if (!roomId || !participantId) {
+      throw { message: "Room ID and Participant ID are required" };
+    }
+
+    const res = await api.patch(
+      `/room/${roomId}/participant/${participantId}/accept`
+    );
+
+    return res.data;
+
+  } catch (error) {
+    throw error.response?.data || {
+      message: "Failed to accept participant"
+    };
+  }
+};
+
+export const rejectParticipantAPI = async (roomId, participantId) => {
+  try {
+    if (!roomId || !participantId) {
+      throw { message: "Room ID and Participant ID are required" };
+    }
+
+    const res = await api.patch(
+      `/room/${roomId}/participant/${participantId}/reject`
+    );
+
+    return res.data;
+
+  } catch (error) {
+    throw error.response?.data || {
+      message: "Failed to reject participant"
+    };
+  }
+};
+
+
+export const getParticipantsAPI = async (roomId) => {
+  try {
+    if (!roomId) {
+      throw { message: "Room ID is required" };
+    }
+
+    const res = await api.get(`/room/${roomId}/participants`);
+
+    return res.data;
+
+  } catch (error) {
+    throw error.response?.data || {
+      message: "Failed to fetch participants"
+    };
+  }
+};

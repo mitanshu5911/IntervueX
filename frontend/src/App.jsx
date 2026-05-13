@@ -9,6 +9,7 @@ import ProtectedRoute from "./routes/ProtectedRoute";
 import CreateRoom from "./pages/room/CreateRoom";
 import MyMeetings from "./pages/room/MyMeetings";
 import ScheduledRoomForMe from "./pages/room/ScheduledRoomForMe";
+import Room from "./pages/room/Room";
 
 const App = () => {
   return (
@@ -26,6 +27,7 @@ const App = () => {
             <Route path="/create-room" element={<CreateRoom/>} />
             <Route path="/my-meetings" element={<MyMeetings/>}/>
             <Route path="/scheduled-for-me" element={<ScheduledRoomForMe/>} />
+            <Route path="/room/:roomId" element={<Room/>} />
           </Route>
         </Routes>
       </main>

@@ -59,7 +59,7 @@ const ScheduledRoomForMe = () => {
         });
 
         setMeetings(res.rooms || []);
-        console.log(meetings);
+        // console.log(meetings);
       } catch (error) {
         console.error(error);
         toast.error(error.message);
