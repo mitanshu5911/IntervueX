@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Header from "../../components/InterviewPanel/Header";
 import {
   acceptParticipantAPI,
@@ -6,8 +6,10 @@ import {
   getWaitingParticipantAPI,
   rejectParticipantAPI,
 } from "../../services/roomServices";
+
 import { useToast } from "../../contexts/ToastContext";
-import { connectSocket, getSocket } from "../../socket/socket";
+import { connectSocket } from "../../socket/socket";
+
 import WaitingList from "../../components/InterviewPanel/WaitingList";
 import ParticipantList from "../../components/InterviewPanel/ParticipantList";
 import MainVideo from "../../components/InterviewPanel/MainVideo";
@@ -15,29 +17,58 @@ import VideoCard from "../../components/InterviewPanel/VideoCard";
 
 const InterviewPanel = ({ room, participant }) => {
   const toast = useToast();
+
+  const socket = connectSocket();
+
+  const localVideoRef = useRef(null);
+  const localStreamRef = useRef(null);
+
+  const peersRef = useRef({});
+
+  const [localStream, setLocalStream] = useState(null);
+
+  const [remoteStreams, setRemoteStreams] = useState({});
+
+  const [isMicOn, setIsMicOn] = useState(true);
+  const [isCameraOn, setIsCameraOn] = useState(true);
+
   const [waitingParticipants, setWaitingParticipants] = useState([]);
-  const [showWaitingList, setShownWaitingList] = useState(true);
-  const [pinnedUser, setPinnedUser] = useState(null);
 
   const [joinedParticipants, setJoinedParticipants] = useState([]);
-  const [showJoinedParticipants, setShowJoinedParticipants] = useState(false);
+
+  const [showWaitingList, setShownWaitingList] = useState(true);
+
+  const [showJoinedParticipants, setShowJoinedParticipants] =
+    useState(false);
+
+  const [pinnedUser, setPinnedUser] = useState(null);
 
   const currentUser = joinedParticipants.find(
-    (p) => p.user._id === participant.user,
+    (p) =>
+      p.user?._id?.toString() === participant.user?.toString(),
   );
 
   const mainUser =
     pinnedUser ||
-    joinedParticipants.find((p) => p.user._id !== participant.user) ||
+    joinedParticipants.find(
+      (p) =>
+        p.user?._id?.toString() !==
+        participant.user?.toString(),
+    ) ||
     currentUser;
 
-  const bottomUsers = joinedParticipants.filter((p) => p._id !== mainUser?._id);
+  const bottomUsers = joinedParticipants.filter(
+    (p) =>
+      p.user?._id?.toString() !==
+      mainUser?.user?._id?.toString(),
+  );
 
-  const showBottomStrip = joinedParticipants.length > 1;
+  const showBottomStrip = bottomUsers.length > 0;
 
   const fetchWaitingParticipants = async () => {
     try {
       const res = await getWaitingParticipantAPI(room.roomId);
+
       setWaitingParticipants(res.waitingParticipants);
     } catch (error) {
       toast.error(error.message || "Something went wrong");
@@ -47,6 +78,7 @@ const InterviewPanel = ({ room, participant }) => {
   const fetchJoinedParticipants = async () => {
     try {
       const res = await getParticipantsAPI(room.roomId);
+
       setJoinedParticipants(res.participants);
     } catch (error) {
       toast.error(error.message || "Something went wrong");
@@ -60,26 +92,267 @@ const InterviewPanel = ({ room, participant }) => {
     }
   }, [room?.roomId]);
 
+  // ================= LOCAL MEDIA =================
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        const stream =
+          await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true,
+          });
+
+        localStreamRef.current = stream;
+
+        setLocalStream(stream);
+
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = stream;
+        }
+      } catch (error) {
+        toast.error("Camera/Mic permission denied");
+      }
+    };
+
+    init();
+
+    return () => {
+      if (localStreamRef.current) {
+        localStreamRef.current
+          .getTracks()
+          .forEach((track) => track.stop());
+      }
+
+      Object.values(peersRef.current).forEach((pc) =>
+        pc.close(),
+      );
+
+      peersRef.current = {};
+    };
+  }, []);
+
+  // ================= SOCKET EVENTS =================
+
   useEffect(() => {
     if (!room?.roomId) return;
 
-    const socket = connectSocket();
-
     socket.on("waiting-list-updated", (list) => {
-      console.log("Real-time update:", list);
       setWaitingParticipants(list);
     });
 
     socket.on("participants-updated", (list) => {
-      console.log("Participants updated:", list);
       setJoinedParticipants(list);
     });
+
+    socket.on(
+      "participant-media-updated",
+      ({ userId, isMicOn, isCameraOn }) => {
+        setJoinedParticipants((prev) =>
+          prev.map((p) => {
+            if (
+              p.user?._id?.toString() ===
+              userId?.toString()
+            ) {
+              return {
+                ...p,
+                isMicOn,
+                isCameraOn,
+              };
+            }
+
+            return p;
+          }),
+        );
+      },
+    );
 
     return () => {
       socket.off("waiting-list-updated");
       socket.off("participants-updated");
+      socket.off("participant-media-updated");
     };
   }, []);
+
+  // ================= WEBRTC =================
+
+  const createPeer = (socketId) => {
+    if (peersRef.current[socketId]) {
+      return peersRef.current[socketId];
+    }
+
+    const pc = new RTCPeerConnection({
+      iceServers: [
+        {
+          urls: "stun:stun.l.google.com:19302",
+        },
+      ],
+    });
+
+    if (localStreamRef.current) {
+      localStreamRef.current
+        .getTracks()
+        .forEach((track) => {
+          pc.addTrack(track, localStreamRef.current);
+        });
+    }
+
+    pc.ontrack = (event) => {
+      const stream = event.streams[0];
+
+      setRemoteStreams((prev) => ({
+        ...prev,
+        [socketId]: stream,
+      }));
+    };
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        socket.emit("ice-candidate", {
+          to: socketId,
+          candidate: event.candidate,
+          from: socket.id,
+        });
+      }
+    };
+
+    peersRef.current[socketId] = pc;
+
+    return pc;
+  };
+
+  const createOffer = async (socketId) => {
+    const pc = createPeer(socketId);
+
+    const offer = await pc.createOffer();
+
+    await pc.setLocalDescription(offer);
+
+    socket.emit("offer", {
+      to: socketId,
+      offer,
+      from: socket.id,
+    });
+  };
+
+  useEffect(() => {
+    if (!localStreamRef.current) return;
+
+    socket.emit("join-room", {
+      roomId: room.roomId,
+      userId: participant.user._id,
+    });
+
+    socket.on("existing-users", async (users) => {
+      for (const user of users) {
+        await createOffer(user.socketId);
+      }
+    });
+
+    socket.on("user-joined", async ({ socketId }) => {
+      await createOffer(socketId);
+    });
+
+    socket.on("offer", async ({ offer, from }) => {
+      const pc = createPeer(from);
+
+      await pc.setRemoteDescription(offer);
+
+      const answer = await pc.createAnswer();
+
+      await pc.setLocalDescription(answer);
+
+      socket.emit("answer", {
+        to: from,
+        answer,
+        from: socket.id,
+      });
+    });
+
+    socket.on("answer", async ({ answer, from }) => {
+      const pc = peersRef.current[from];
+
+      if (pc) {
+        await pc.setRemoteDescription(answer);
+      }
+    });
+
+    socket.on(
+      "ice-candidate",
+      async ({ candidate, from }) => {
+        const pc = peersRef.current[from];
+
+        if (pc && candidate) {
+          await pc.addIceCandidate(candidate);
+        }
+      },
+    );
+
+    socket.on("user-left", ({ socketId }) => {
+      if (peersRef.current[socketId]) {
+        peersRef.current[socketId].close();
+
+        delete peersRef.current[socketId];
+      }
+
+      setRemoteStreams((prev) => {
+        const updated = { ...prev };
+
+        delete updated[socketId];
+
+        return updated;
+      });
+    });
+
+    return () => {
+      socket.off("existing-users");
+      socket.off("user-joined");
+      socket.off("offer");
+      socket.off("answer");
+      socket.off("ice-candidate");
+      socket.off("user-left");
+    };
+  }, [localStream]);
+
+  // ================= CONTROLS =================
+
+  const handleToggleMic = () => {
+    const track =
+      localStreamRef.current?.getAudioTracks()[0];
+
+    if (!track) return;
+
+    track.enabled = !track.enabled;
+
+    setIsMicOn(track.enabled);
+
+    socket.emit("toggle-media", {
+      roomId: room.roomId,
+      userId: participant.user,
+      type: "mic",
+      value: track.enabled,
+    });
+  };
+
+  const handleToggleCamera = () => {
+    const track =
+      localStreamRef.current?.getVideoTracks()[0];
+
+    if (!track) return;
+
+    track.enabled = !track.enabled;
+
+    setIsCameraOn(track.enabled);
+
+    socket.emit("toggle-media", {
+      roomId: room.roomId,
+      userId: participant.user,
+      type: "camera",
+      value: track.enabled,
+    });
+  };
+
+  // ================= WAITING =================
 
   const handleAccept = async (p) => {
     try {
@@ -87,12 +360,11 @@ const InterviewPanel = ({ room, participant }) => {
         prev.filter((item) => item._id !== p._id),
       );
 
-      setJoinedParticipants((prev) => {
-        const exists = prev.find((x) => x._id === p._id);
-        if (exists) return prev;
-        return [...prev, p];
-      });
-      const res = await acceptParticipantAPI(room.roomId, p._id);
+      const res = await acceptParticipantAPI(
+        room.roomId,
+        p._id,
+      );
+
       toast.success(res.message);
     } catch (error) {
       toast.error(error.message);
@@ -105,7 +377,10 @@ const InterviewPanel = ({ room, participant }) => {
         prev.filter((item) => item._id !== p._id),
       );
 
-      const res = await rejectParticipantAPI(room.roomId, p._id);
+      const res = await rejectParticipantAPI(
+        room.roomId,
+        p._id,
+      );
 
       toast.success(res.message);
     } catch (error) {
@@ -131,8 +406,12 @@ const InterviewPanel = ({ room, participant }) => {
     setShowJoinedParticipants(false);
   };
 
-  return (
-    <div className="w-full max-h-[89vh] p-2 bg-gradient-to-br from-indigo-50 via-white to-indigo-100">
+  
+return (
+  <div className="w-full h-[89vh] overflow-hidden bg-gradient-to-br from-indigo-50 via-white to-indigo-100 flex flex-col">
+    
+    {/* HEADER */}
+    <div className="h-[64px] min-h-[64px] px-2 pt-2">
       <Header
         room={room}
         participant={participant}
@@ -141,27 +420,82 @@ const InterviewPanel = ({ room, participant }) => {
         onOpenWaitingList={onOpenWaitingList}
         onOpenParticipantList={onOpenParticipantList}
       />
+    </div>
 
-      <div className="w-full flex gap-4 p-4">
-        {/* LEFT MAIN AREA */}
+    {/* BODY */}
+    <div className="flex-1 min-h-0 flex gap-4 p-3 overflow-hidden">
+
+      {/* LEFT SIDE */}
+      <div
+        className={`h-full min-h-0 flex flex-col gap-3 transition-all duration-300 ${
+          showWaitingList || showJoinedParticipants
+            ? "w-[70%]"
+            : "w-full"
+        }`}
+      >
+
+        {/* MAIN VIDEO */}
         <div
-          className={`h-80 transition-all duration-300 ${
-            showWaitingList || showJoinedParticipants ? "w-[70%]" : "w-full"
-          }`}
+          className={`
+            w-full min-h-0 rounded-2xl overflow-hidden
+            ${
+              showBottomStrip
+                ? "flex-1"
+                : "h-full"
+            }
+          `}
         >
-          <div className="w-full h-80 rounded-2xl flex items-center justify-center text-white">
-            <MainVideo
-              mainUser={mainUser}
-              currentUserId={participant.user}
-              pinnedUser={pinnedUser}
-              onPinToggle={setPinnedUser}
-            />
-          </div>
+          <MainVideo
+            participant={mainUser}
+            currentUserId={participant.user._id}
+            localStream={localStream}
+            remoteStreams={remoteStreams}
+            pinnedUser={pinnedUser}
+            setPinnedUser={setPinnedUser}
+            onToggleMic={handleToggleMic}
+            onToggleCamera={handleToggleCamera}
+            isMicOn={isMicOn}
+            isCameraOn={isCameraOn}
+          />
         </div>
 
-        {/* RIGHT SIDE PANEL */}
-        {(showWaitingList || showJoinedParticipants) && (
-          <div className="w-[30%] h-full">
+        {/* BOTTOM STRIP */}
+        {showBottomStrip && (
+          <div className="h-[170px] min-h-[170px] max-h-[170px] bg-white border border-gray-200 rounded-2xl p-3 overflow-hidden">
+
+            <div className="h-full flex items-center gap-4 overflow-x-auto overflow-y-hidden scrollbar-hide">
+
+              {bottomUsers.map((user) => (
+                <div
+                  key={user._id}
+                  className="h-full min-w-[240px] max-w-[240px] flex-shrink-0"
+                >
+                  <VideoCard
+                    participant={user}
+                    currentUserId={participant.user._id}
+                    localStream={localStream}
+                    remoteStreams={remoteStreams}
+                    pinnedUser={pinnedUser}
+                    setPinnedUser={setPinnedUser}
+                    onToggleMic={handleToggleMic}
+                    onToggleCamera={handleToggleCamera}
+                    isMicOn={isMicOn}
+                    isCameraOn={isCameraOn}
+                  />
+                </div>
+              ))}
+
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* RIGHT PANEL */}
+      {(showWaitingList || showJoinedParticipants) && (
+        <div className="w-[30%] h-full min-h-0 overflow-hidden">
+
+          <div className="h-full overflow-hidden rounded-2xl">
+
             {showWaitingList && (
               <WaitingList
                 waitingParticipants={waitingParticipants}
@@ -174,38 +508,20 @@ const InterviewPanel = ({ room, participant }) => {
             {showJoinedParticipants && (
               <ParticipantList
                 joinedParticipants={joinedParticipants}
-                onClose={onCloseParticipantList}
                 currentUserId={participant.user}
+                onClose={onCloseParticipantList}
               />
             )}
-          </div>
-        )}
-      </div>
 
-      {showBottomStrip && (
-        <div className="w-full px-4 h-28">
-          <div className="w-full bg-white rounded-2xl shadow-md flex items-center justify-between px-4 py-2">
-            {/* LEFT: CARDS */}
-            <div className="flex gap-3 overflow-x-auto">
-              {bottomUsers.map((user) => (
-                <VideoCard
-                  key={user._id}
-                  user={user}
-                  isCurrentUser={user.user._id === participant.user}
-                  onPin={() => setPinnedUser(user)}
-                />
-              ))}
-            </div>
-
-            {/* RIGHT: END BUTTON */}
-            <button className="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-xl font-medium transition">
-              End Meeting
-            </button>
           </div>
         </div>
       )}
     </div>
-  );
+  </div>
+);
+
+
 };
 
 export default InterviewPanel;
+

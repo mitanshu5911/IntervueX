@@ -1,144 +1,152 @@
-import React, { useEffect, useRef, useState } from "react";
-import { Mic, MicOff, Video, VideoOff, Pin } from "lucide-react";
+import React, { useEffect, useMemo, useRef } from "react";
 
-const MainVideo = ({ mainUser, currentUserId, pinnedUser, onPinToggle }) => {
+import {
+  Mic,
+  MicOff,
+  Video,
+  VideoOff,
+  Pin,
+  PinOff,
+} from "lucide-react";
+
+const MainVideo = ({
+  participant,
+  currentUserId,
+  localStream,
+  remoteStreams,
+  pinnedUser,
+  setPinnedUser,
+  onToggleMic,
+  onToggleCamera,
+  isMicOn,
+  isCameraOn,
+}) => {
   const videoRef = useRef(null);
 
-  const [stream, setStream] = useState(null);
-  const [isMicOn, setIsMicOn] = useState(true);
-  const [isCameraOn, setIsCameraOn] = useState(true);
+  const isCurrentUser =
+    participant?.user?._id?.toString() ===
+    currentUserId?.toString();
 
-  const isCurrentUser = mainUser?.user?._id === currentUserId;
+  const isPinned =
+    pinnedUser?.user?._id?.toString() ===
+    participant?.user?._id?.toString();
 
-  // 🎥 Get media ONLY if this is current user
+  const remoteStream = useMemo(() => {
+    if (!participant?.socketId) return null;
+
+    return remoteStreams?.[participant.socketId];
+  }, [participant, remoteStreams]);
+
   useEffect(() => {
-    if (!isCurrentUser) return;
+    if (!videoRef.current) return;
 
-    let localStream;
-
-    const startMedia = async () => {
-      try {
-        localStream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true,
-        });
-
-        setStream(localStream);
-
-        if (videoRef.current) {
-          videoRef.current.srcObject = localStream;
-        }
-      } catch (err) {
-        console.error("Media error:", err);
+    if (isCurrentUser) {
+      if (localStream) {
+        videoRef.current.srcObject = localStream;
       }
-    };
-
-    startMedia();
-
-    return () => {
-      localStream?.getTracks().forEach((track) => track.stop());
-    };
-  }, [isCurrentUser]);
-
-  // 🎤 MIC TOGGLE
-  const toggleMic = () => {
-    if (!stream) return;
-
-    stream.getAudioTracks().forEach((track) => {
-      track.enabled = !track.enabled;
-    });
-
-    setIsMicOn((prev) => !prev);
-  };
-
-  // 🎥 CAMERA TOGGLE
-  const toggleCamera = () => {
-    if (!stream) return;
-
-    stream.getVideoTracks().forEach((track) => {
-      track.enabled = !track.enabled;
-    });
-
-    setIsCameraOn((prev) => !prev);
-  };
-
-  // 📌 PIN TOGGLE
-  const handlePin = () => {
-    if (!onPinToggle) return;
-
-    if (pinnedUser?._id === mainUser?._id) {
-      onPinToggle(null);
     } else {
-      onPinToggle(mainUser);
+      if (remoteStream) {
+        videoRef.current.srcObject = remoteStream;
+      }
+    }
+  }, [localStream, remoteStream, isCurrentUser]);
+
+  const handlePinToggle = () => {
+    if (isPinned) {
+      setPinnedUser(null);
+    } else {
+      setPinnedUser(participant);
     }
   };
 
   return (
-    <div className="w-full h-full rounded-2xl overflow-hidden relative bg-black">
-
-      {/* VIDEO AREA */}
-      {isCurrentUser ? (
+    <div className="w-full h-full bg-black rounded-2xl overflow-hidden relative">
+      {(isCurrentUser && localStream) ||
+      (!isCurrentUser && remoteStream) ? (
         <video
           ref={videoRef}
           autoPlay
           playsInline
-          muted
+          muted={isCurrentUser}
           className="w-full h-full object-cover"
         />
       ) : (
-        <div className="w-full h-full flex items-center justify-center text-white text-lg">
-          {mainUser?.user?.name}'s Video
+        <div className="w-full h-full flex items-center justify-center text-white">
+          <div className="flex flex-col items-center gap-4">
+            <div className="w-28 h-28 rounded-full bg-indigo-600 flex items-center justify-center text-4xl font-semibold uppercase">
+              {participant?.user?.name?.charAt(0)}
+            </div>
+
+            <p className="text-xl">
+              {participant?.user?.name}
+            </p>
+          </div>
         </div>
       )}
 
-      {/* USER NAME (TOP RIGHT) */}
-      <div className="absolute top-3 right-3 bg-black/60 text-white px-3 py-1 rounded-lg text-sm">
-        {isCurrentUser ? "You" : mainUser?.user?.name}
+      <div className="absolute top-4 right-4 bg-black/60 backdrop-blur-md px-4 py-2 rounded-xl text-white text-sm font-medium">
+        {isCurrentUser
+          ? `${participant?.user?.name} (You)`
+          : participant?.role === "interviewer"
+          ? `${participant?.user?.name} (Interviewer)`
+          : participant?.user?.name}
       </div>
 
-      {/* CONTROLS (ONLY FOR CURRENT USER) */}
-      {isCurrentUser && (
-        <div className="absolute bottom-4 left-4 flex gap-3">
+      <div className="absolute bottom-4 left-4 flex gap-3">
+        {isCurrentUser && (
+          <>
+            <button
+              onClick={onToggleMic}
+              className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                isMicOn
+                  ? "bg-white text-black"
+                  : "bg-red-500 text-white"
+              }`}
+            >
+              {isMicOn ? (
+                <Mic size={20} />
+              ) : (
+                <MicOff size={20} />
+              )}
+            </button>
 
-          {/* MIC */}
-          <button
-            onClick={toggleMic}
-            className={`p-3 rounded-full transition ${
-              isMicOn
-                ? "bg-white text-black"
-                : "bg-red-500 text-white"
-            }`}
-          >
-            {isMicOn ? <Mic size={18} /> : <MicOff size={18} />}
-          </button>
+            <button
+              onClick={onToggleCamera}
+              className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                isCameraOn
+                  ? "bg-white text-black"
+                  : "bg-red-500 text-white"
+              }`}
+            >
+              {isCameraOn ? (
+                <Video size={20} />
+              ) : (
+                <VideoOff size={20} />
+              )}
+            </button>
+          </>
+        )}
 
-          {/* CAMERA */}
+        {!isCurrentUser && (
           <button
-            onClick={toggleCamera}
-            className={`p-3 rounded-full transition ${
-              isCameraOn
-                ? "bg-white text-black"
-                : "bg-red-500 text-white"
-            }`}
-          >
-            {isCameraOn ? <Video size={18} /> : <VideoOff size={18} />}
-          </button>
-
-          {/* PIN */}
-          <button
-            onClick={handlePin}
-            className={`p-3 rounded-full transition ${
-              pinnedUser?._id === mainUser?._id
+            onClick={handlePinToggle}
+            className={`w-12 h-12 rounded-full flex items-center justify-center ${
+              isPinned
                 ? "bg-indigo-600 text-white"
                 : "bg-white text-black"
             }`}
           >
-            <Pin size={18} />
+            {isPinned ? (
+              <PinOff size={20} />
+            ) : (
+              <Pin size={20} />
+            )}
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };
 
 export default MainVideo;
+

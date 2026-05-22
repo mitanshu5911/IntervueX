@@ -10,6 +10,9 @@ import CreateRoom from "./pages/room/CreateRoom";
 import MyMeetings from "./pages/room/MyMeetings";
 import ScheduledRoomForMe from "./pages/room/ScheduledRoomForMe";
 import Room from "./pages/room/Room";
+import Footer from "./common/Footer";
+import About from "./pages/About";
+import Contact from "./pages/Contact";
 
 const App = () => {
   return (
@@ -19,8 +22,12 @@ const App = () => {
         <Routes>
           <Route element={<PublicRoute />}>
             <Route path="/login" element={<Login />} />
+            
             <Route path="/auth-success" element={<AuthSuccess />} />
           </Route>
+
+          <Route path="/about" element={<About/>}/>
+          <Route path="/contact" element={<Contact/>}/>
 
           <Route element={<ProtectedRoute />}>
             <Route path="/" element={<Dashboard />} />
@@ -31,6 +38,7 @@ const App = () => {
           </Route>
         </Routes>
       </main>
+      <Footer/>
     </div>
   );
 };
