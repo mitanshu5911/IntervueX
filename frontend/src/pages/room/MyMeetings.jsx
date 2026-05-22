@@ -5,7 +5,7 @@ import { getMyMeetingsAPI } from "../../services/roomServices";
 import { useLoading } from "../../contexts/LoadingContext";
 import { useToast } from "../../contexts/ToastContext";
 import { Search, SlidersHorizontal } from "lucide-react";
-import FilterDropdown from "../../components/room/myMeetings/FilterDropdown";
+import FilterDropdown from "../../components/room/myMeetings/FilterDropDown";
 import RoomCard from "../../components/room/RoomCard";
 
 const borderColors = [

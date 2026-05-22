@@ -6,7 +6,7 @@ import { getScheduledForMeAPI } from "../../services/roomServices";
 import Heading from "../../components/room/schedulerForMe/Heading";
 import { Search, SlidersHorizontal } from "lucide-react";
 import RoomCard from "../../components/room/RoomCard";
-import FilterDropdown from "../../components/room/myMeetings/FilterDropdown";
+import FilterDropdown from "../../components/room/myMeetings/FilterDropDown";
 
 const borderColors = [
   "bg-indigo-500",

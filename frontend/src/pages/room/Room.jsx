@@ -6,7 +6,7 @@ import { useToast } from "../../contexts/ToastContext";
 import RoomNotAvailable from "../../components/room/RoomNotAvailable";
 import RoomNotActive from "../../components/room/RoomNotActive";
 import EndedRoom from "../../components/room/EndedRoom";
-import WaitingRoom from "../../components/room/waitingRoom";
+import WaitingRoom from "../../components/room/WaitingRoom";
 import InterviewPanel from "./InterviewPanel";
 import { connectSocket, disconnectSocket } from "../../socket/socket";
 import CandidatePanel from "./CandidatePanel";

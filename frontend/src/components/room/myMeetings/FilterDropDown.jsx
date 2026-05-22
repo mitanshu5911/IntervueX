@@ -4,7 +4,7 @@ import { X } from "lucide-react";
 
 const statuses = ["active", "scheduled", "ended"];
 
-const FilterDropdown = ({
+const FilterDropDown = ({
   open,
   onClose,
   selectedStatus,
@@ -134,4 +134,4 @@ const FilterDropdown = ({
   );
 };
 
-export default FilterDropdown;
+export default FilterDropDown;
